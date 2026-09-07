@@ -1,33 +1,55 @@
-# 📌 Pinterest Downloader V1 BETA
+# PinterestDOWNLOAD
 
-Um aplicativo desenvolvido em C# (Windows Forms) para baixar pastas (boards) inteiras do Pinterest com um único clique. Ideal para artistas, motion designers e editores de vídeo que precisam coletar referências visuais e moodboards em alta qualidade de forma rápida.
+App WinForms (.NET 10) que baixa as imagens e vídeos de um board público do Pinterest.
 
-## 🚀 Funcionalidades
+## Como funciona
 
-- **Download em Massa:** Baixa todas as mídias de uma pasta do Pinterest automaticamente.
-- **Suporte a Vídeos:** Além de imagens em alta resolução (`.jpg`), o app também detecta e baixa vídeos (`.mp4`) presentes no board. TESTE!!!
-- **Scroll Infinito Automatizado:** O aplicativo rola a página automaticamente até o final para garantir que todo o conteúdo seja carregado e capturado. TESTE!!
-- **Interface Intuitiva:** Interface gráfica simples, sem necessidade de rodar comandos no terminal.
+1. Abre o board no Google Chrome via Selenium (o driver é resolvido sozinho pelo
+   **Selenium Manager** — não é preciso instalar o ChromeDriver na mão).
+2. Você faz login no Pinterest, se necessário, e clica em **"Já fiz login"**.
+3. Lê o board inteiro pela API interna do Pinterest (`BoardFeedResource` + seções):
+   - **imagens** na resolução original;
+   - **vídeos**: a URL da página de cada pin de vídeo.
+   - Se a API falhar, cai para rolar o board coletando `<img>` e achando os pins de vídeo.
+4. Baixa tudo em paralelo (retry/backoff, extensão pelo `Content-Type`, deduplicação):
+   - imagens e `.mp4` diretos via HTTP;
+   - vídeos de pin via **yt-dlp** (baixado automaticamente na 1ª vez, ~17 MB);
+   - `.m3u8` soltos via **ffmpeg** (baixado automaticamente na 1ª vez, ~80 MB).
 
-## ⚠️ Como usar (Aviso de Login)
+## Uso
 
-Por razões de segurança e para evitar acessar os dados pessoais do seu navegador padrão, este aplicativo utiliza um **Perfil de Navegação Portátil e Isolado**.
+1. Cole a URL do board (`https://www.pinterest.com/usuario/nome-do-board/`).
+2. Escolha a pasta de destino.
+3. Marque se quer imagens, vídeos ou os dois, e quantos downloads simultâneos.
+4. Clique em **Baixar tudo**, faça login na janela do Chrome e clique em **Já fiz login**.
 
-1. **Primeiro Uso:** Ao clicar em "Baixar tudo" pela primeira vez, uma janela automatizada do Google Chrome será aberta. Você terá **15 segundos** para fazer o seu login no Pinterest manualmente nessa janela. (O Pinterest exige login para visualizar pastas completas).
-2. **Próximos Usos:** O aplicativo criará uma pasta chamada `PerfilPinterest` no diretório do programa para salvar a sua sessão. Nas próximas vezes que você usar, o login já estará salvo e a extração começará imediatamente de forma automática.
+Arquivos gerados dentro da pasta de destino:
 
-> *Sua senha não é interceptada, lida ou armazenada pelo código. O login ocorre diretamente nos servidores do Pinterest através da interface segura do Chrome.*
+- `Imagem_<hash>.jpg` / `Video_<hash>.mp4` — as mídias;
+- `_logs/run_<data>.log` — log da execução;
+- `_logs/_links_encontrados.txt` — tudo que foi encontrado (para conferência);
+- `_logs/manifest.json` — URLs já baixadas; re-executar o app pula o que já veio.
 
-## 🛠️ Pré-requisitos
+## Dados do app
 
-- Windows (10 ou 11).
-- Ter o **Google Chrome** instalado no computador (o motor do app utiliza o ChromeDriver).
-- Conexão estável com a internet.
+Ficam em `%LOCALAPPDATA%\PinterestDOWNLOAD\`:
 
-## 💻 Como executar o projeto (Desenvolvedores)
+- `chrome-profile/` — perfil do Chrome (mantém o login entre execuções);
+- `settings.json` — última URL/pasta e preferências;
+- `ffmpeg/`, `yt-dlp/` — ferramentas baixadas automaticamente na 1ª vez (se já
+  tiver ffmpeg/yt-dlp no PATH, usa os do sistema).
 
-Se você quiser clonar e compilar o código por conta própria:
+## Requisitos
 
-1. Clone o repositório:
-   ```bash
-   git clone [https://github.com/SEU-USUARIO/PinterestDOWNLOAD.git](https://github.com/SEU-USUARIO/PinterestDOWNLOAD.git)
+- Windows + .NET 10 SDK
+- Google Chrome instalado e atualizado
+
+```
+dotnet build
+dotnet run --project PinterestDOWNLOAD
+```
+
+## Aviso
+
+Baixar boards em massa pode violar os [Termos de Serviço do Pinterest](https://policy.pinterest.com/terms-of-service).
+Use para conteúdo próprio / uso pessoal e respeite direitos autorais.
