@@ -28,6 +28,27 @@ namespace PinterestDOWNLOAD
             chkImagens.Checked = _config.BaixarImagens;
             chkVideos.Checked = _config.BaixarVideos;
             numSimultaneos.Value = _config.DownloadsSimultaneos;
+            rbPin.Checked = _config.ModoPinUnico;
+            rbPasta.Checked = !_config.ModoPinUnico;
+            AplicarModo();
+        }
+
+        private void ModoChanged(object? sender, EventArgs e) => AplicarModo();
+
+        /// <summary>Ajusta a interface conforme o modo escolhido (board inteiro x um pin).</summary>
+        private void AplicarModo()
+        {
+            bool pin = rbPin.Checked;
+
+            lblUrl.Text = pin ? "URL do pin:" : "URL do board:";
+            txtUrl.PlaceholderText = pin
+                ? "https://www.pinterest.com/pin/123456789/"
+                : "https://www.pinterest.com/usuario/board/";
+
+            // Num pin unico so ha um item — os controles de board nao fazem sentido.
+            lblSimultaneos.Visible = !pin;
+            numSimultaneos.Visible = !pin;
+            btnBaixar.Text = pin ? "Baixar" : "Baixar tudo";
         }
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
@@ -44,6 +65,7 @@ namespace PinterestDOWNLOAD
             _config.BaixarImagens = chkImagens.Checked;
             _config.BaixarVideos = chkVideos.Checked;
             _config.DownloadsSimultaneos = (int)numSimultaneos.Value;
+            _config.ModoPinUnico = rbPin.Checked;
             _config.Save();
         }
 
@@ -170,8 +192,26 @@ namespace PinterestDOWNLOAD
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
                 !uri.Host.Contains("pinterest.", StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show(this, "A URL nao parece ser de um board do Pinterest.",
+                MessageBox.Show(this, "A URL nao parece ser do Pinterest (board ou pin).",
                     "URL invalida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            bool ehPin = PinterestScraper.EhUrlDePin(url);
+            if (rbPin.Checked && !ehPin)
+            {
+                MessageBox.Show(this,
+                    "Voce escolheu \"Pin unico\", mas a URL parece ser de um board.\n" +
+                    "Troque para \"Pasta (board)\" ou cole a URL de um pin (.../pin/123.../).",
+                    "Modo x URL", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            if (rbPasta.Checked && ehPin)
+            {
+                MessageBox.Show(this,
+                    "Voce escolheu \"Pasta (board)\", mas a URL e de um pin.\n" +
+                    "Troque para \"Pin unico\" ou cole a URL de um board.",
+                    "Modo x URL", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
 
@@ -197,6 +237,8 @@ namespace PinterestDOWNLOAD
 
         private void DefinirEstadoRodando(bool rodando)
         {
+            rbPasta.Enabled = !rodando;
+            rbPin.Enabled = !rodando;
             txtUrl.Enabled = !rodando;
             txtPasta.Enabled = !rodando;
             btnSelecionarPasta.Enabled = !rodando;

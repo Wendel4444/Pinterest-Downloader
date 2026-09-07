@@ -18,10 +18,12 @@ App WinForms (.NET 10) que baixa as imagens e vídeos de um board público do Pi
 
 ## Uso
 
-1. Cole a URL do board (`https://www.pinterest.com/usuario/nome-do-board/`).
-2. Escolha a pasta de destino.
-3. Marque se quer imagens, vídeos ou os dois, e quantos downloads simultâneos.
-4. Clique em **Baixar tudo**, faça login na janela do Chrome e clique em **Já fiz login**.
+1. Escolha o modo:
+   - **Pasta (board)** — baixa o board inteiro (`https://www.pinterest.com/usuario/board/`);
+   - **Pin único** — baixa só um pin (`https://www.pinterest.com/pin/123456/`).
+2. Cole a URL e escolha a pasta de destino.
+3. Marque se quer imagens, vídeos ou os dois (e, no modo pasta, quantos downloads simultâneos).
+4. Clique em **Baixar**, faça login na janela do Chrome e clique em **Já fiz login**.
 
 Arquivos gerados dentro da pasta de destino:
 
