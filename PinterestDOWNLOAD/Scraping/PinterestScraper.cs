@@ -87,22 +87,32 @@ namespace PinterestDOWNLOAD.Scraping
 
             try
             {
-                driver.Navigate().GoToUrl(url);
-                _log.Info($"Board aberto: {url}");
-
-                progresso.Report(new StatusUpdate(
-                    "Faca login no Pinterest (se necessario) e clique em \"Ja fiz login\"."));
-                aguardarConfirmacaoLogin();
-                token.ThrowIfCancellationRequested();
-
                 var js = (IJavaScriptExecutor)driver;
 
-                bool apiOk = ColetarViaApi(driver, opcoes, midias, urlsVideoVistas, progresso, token);
+                driver.Navigate().GoToUrl(url);
 
-                if (!apiOk)
+                if (EhUrlDePin(url))
                 {
-                    _log.Aviso("A coleta via API do Pinterest nao funcionou; usando rolagem no board.");
-                    RolarEColetarDoDom(driver, js, opcoes, midias, urlsVideoVistas, progresso, token);
+                    // Pin publico nao pede login — tenta direto; so pede login se falhar.
+                    _log.Info($"Pin aberto: {url}");
+                    progresso.Report(new StatusUpdate("Lendo o pin..."));
+                    ColetarPinUnico(driver, js, url, opcoes, midias,
+                        aguardarConfirmacaoLogin, progresso, token);
+                }
+                else
+                {
+                    _log.Info($"Board aberto: {url}");
+                    progresso.Report(new StatusUpdate(
+                        "Faca login no Pinterest (se necessario) e clique em \"Ja fiz login\"."));
+                    aguardarConfirmacaoLogin();
+                    token.ThrowIfCancellationRequested();
+
+                    bool apiOk = ColetarViaApi(driver, opcoes, midias, urlsVideoVistas, progresso, token);
+                    if (!apiOk)
+                    {
+                        _log.Aviso("A coleta via API do Pinterest nao funcionou; usando rolagem no board.");
+                        RolarEColetarDoDom(driver, js, opcoes, midias, urlsVideoVistas, progresso, token);
+                    }
                 }
 
                 CookieHeader = MontarCookieHeader(driver);
@@ -119,6 +129,136 @@ namespace PinterestDOWNLOAD.Scraping
                 driver.Dispose();
             }
         }
+
+        // ----------------------------------------------------------------------
+        //  Pin unico (URL /pin/<id>/)
+        // ----------------------------------------------------------------------
+
+        internal static bool EhUrlDePin(string url) =>
+            Uri.TryCreate(url, UriKind.Absolute, out var u) &&
+            Regex.IsMatch(u.AbsolutePath, @"^/pin/\d+", RegexOptions.IgnoreCase);
+
+        private void ColetarPinUnico(
+            IWebDriver driver, IJavaScriptExecutor js, string url,
+            OpcoesColeta opcoes, HashSet<MediaItem> midias,
+            Action aguardarConfirmacaoLogin, IProgress<StatusUpdate> progresso, CancellationToken token)
+        {
+            if (TentarPinUnico(js, url, opcoes, midias, token))
+                return;
+
+            // Nada pelos dados publicos — provavelmente o Pinterest pediu login para este pin.
+            _log.Aviso("Sem dados do pin sem login. Faca login na janela do Chrome e clique em \"Ja fiz login\".");
+            progresso.Report(new StatusUpdate("O pin pede login. Faca login e clique em \"Ja fiz login\"."));
+            aguardarConfirmacaoLogin();
+            token.ThrowIfCancellationRequested();
+
+            try { driver.Navigate().Refresh(); } catch { /* ignore */ }
+            if (!TentarPinUnico(js, url, opcoes, midias, token))
+                _log.Erro("Continuo sem conseguir os dados desse pin.");
+        }
+
+        private bool TentarPinUnico(
+            IJavaScriptExecutor js, string url, OpcoesColeta opcoes,
+            HashSet<MediaItem> midias, CancellationToken token)
+        {
+            bool ehVideo = false;
+            string? imagem = null;
+
+            for (int i = 0; i < 8 && !ehVideo && imagem is null; i++)
+            {
+                Aguardar(700, token);
+
+                try
+                {
+                    if (js.ExecuteScript(ScriptPinDom) is Dictionary<string, object> d)
+                    {
+                        bool ready = d.GetValueOrDefault("ready") is true;
+                        if (d.GetValueOrDefault("isVideo") is true) ehVideo = true;
+                        if (ready && d.GetValueOrDefault("image")?.ToString() is { Length: > 0 } im)
+                            imagem = im;
+                        if (i == 0 && d.GetValueOrDefault("dbg")?.ToString() is { Length: > 0 } dbg)
+                            _log.Aviso("pin dbg:" + dbg.Trim());
+                    }
+                }
+                catch { /* tenta de novo */ }
+            }
+
+            if (ehVideo)
+            {
+                if (opcoes.ColetarVideos)
+                {
+                    midias.Add(new MediaItem(TipoMidia.VideoPin, url));
+                    _log.Info("pin de video.");
+                }
+                else
+                {
+                    _log.Aviso("O pin e um video, mas 'Videos' esta desmarcado.");
+                }
+                return true;
+            }
+
+            if (imagem is not null)
+            {
+                if (opcoes.ColetarImagens)
+                {
+                    string melhor = imagem;
+                    string originals = RegexTamanhoImagem.Replace(melhor, "/originals/");
+                    midias.Add(new MediaItem(TipoMidia.Imagem, originals,
+                        UrlFallback: originals != melhor ? melhor : null));
+                    _log.Info($"pin de imagem: {originals}");
+                }
+                else
+                {
+                    _log.Aviso("O pin e uma imagem, mas 'Imagens' esta desmarcado.");
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        // Roda na propria pagina do pin: acha a midia principal (nao os "pins relacionados").
+        private const string ScriptPinDom = """
+            var out = { image: null, isVideo: false, ready: false, dbg: '' };
+
+            // 1) __PWS_DATA__ (vem no HTML): fonte de verdade para este pin.
+            try {
+              var e = document.getElementById('__PWS_DATA__');
+              if (e) {
+                out.ready = true;
+                var t = e.textContent;
+                if (/"video_list"/.test(t) || /\/videos\/(?:mc|iht|720p|hls|expMp4)\//i.test(t)) {
+                  out.isVideo = true;
+                } else {
+                  var m = t.match(/"orig"\s*:\s*\{[^{}]*?"url"\s*:\s*"([^"]+?\.(?:jpg|jpeg|png|webp|gif)[^"]*)"/i);
+                  if (m) out.image = m[1].replace(/\\\//g, '/');
+                }
+              } else { out.dbg += ' sem-PWS'; }
+            } catch (x) { out.dbg += ' pws:' + x; }
+
+            // 2) Metatags og: e a tag <video> (reforço / paginas sem PWS).
+            if (!out.isVideo) {
+              var ogv = document.querySelector('meta[property="og:video"],meta[property="og:video:url"],meta[property="og:video:secure_url"]');
+              if (ogv || document.querySelector('video')) out.isVideo = true;
+            }
+            if (!out.isVideo && !out.image) {
+              var ogi = document.querySelector('meta[property="og:image"],meta[name="og:image"]');
+              if (ogi && ogi.content) { out.image = ogi.content; out.ready = true; }
+            }
+
+            // 3) Ultimo recurso: a maior <img> do pinimg na tela.
+            if (!out.isVideo && !out.image) {
+              var best = null, area = 0;
+              document.querySelectorAll('img').forEach(function(im){
+                if (!im.src || im.src.indexOf('pinimg') < 0) return;
+                var a = (im.naturalWidth || im.width || 0) * (im.naturalHeight || im.height || 0);
+                if (a > area) { area = a; best = im.currentSrc || im.src; }
+              });
+              if (best) { out.image = best; out.ready = true; }
+            }
+
+            return out;
+            """;
 
         // ----------------------------------------------------------------------
         //  Metodo principal: API interna do Pinterest

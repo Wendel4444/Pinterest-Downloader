@@ -14,6 +14,7 @@ namespace PinterestDOWNLOAD.Infra
         public string? UltimaPasta { get; set; }
         public bool BaixarImagens { get; set; } = true;
         public bool BaixarVideos { get; set; } = true;
+        public bool ModoPinUnico { get; set; }
 
         private int _downloadsSimultaneos = 5;
         public int DownloadsSimultaneos
