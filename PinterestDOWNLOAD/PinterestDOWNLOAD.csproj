@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -6,11 +6,18 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>PinterestDOWNLOAD</RootNamespace>
+    <AssemblyTitle>Pinterest Downloader</AssemblyTitle>
+    <Version>0.2.0</Version>
+    <Deterministic>true</Deterministic>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- O ChromeDriver e resolvido automaticamente pelo Selenium Manager
+         (Selenium 4.6+), casando com a versao do Chrome instalado.
+         Por isso NAO fixamos mais o pacote Selenium.WebDriver.ChromeDriver. -->
     <PackageReference Include="Selenium.WebDriver" Version="4.47.0" />
-    <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="152.0.7977.6400" />
   </ItemGroup>
 
 </Project>
